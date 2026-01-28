@@ -1,0 +1,142 @@
+// prisma/schema.prisma
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Admin Users
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  password  String
+  name      String
+  role      Role     @default(ADMIN)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  blogs     Blog[]
+  portfolios Portfolio[]
+}
+
+enum Role {
+  ADMIN
+  SUPER_ADMIN
+}
+
+// Blog Posts
+model Blog {
+  id          String   @id @default(cuid())
+  title       String
+  slug        String   @unique
+  excerpt     String
+  content     String   @db.Text
+  coverImage  String?
+  published   Boolean  @default(false)
+  featured    Boolean  @default(false)
+  metaTitle   String?
+  metaDesc    String?
+  keywords    String?
+  authorId    String
+  author      User     @relation(fields: [authorId], references: [id])
+  category    Category? @relation(fields: [categoryId], references: [id])
+  categoryId  String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// Blog Categories
+model Category {
+  id    String @id @default(cuid())
+  name  String @unique
+  slug  String @unique
+  blogs Blog[]
+}
+
+// Portfolio Projects
+model Portfolio {
+  id          String   @id @default(cuid())
+  title       String
+  slug        String   @unique
+  description String   @db.Text
+  shortDesc   String
+  coverImage  String
+  images      String[] 
+  clientName  String?
+  projectUrl  String?
+  techStack   String[]
+  featured    Boolean  @default(false)
+  published   Boolean  @default(false)
+  metaTitle   String?
+  metaDesc    String?
+  authorId    String
+  author      User     @relation(fields: [authorId], references: [id])
+  serviceId   String?
+  service     Service? @relation(fields: [serviceId], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// Services
+model Service {
+  id          String   @id @default(cuid())
+  title       String
+  slug        String   @unique
+  shortDesc   String
+  description String   @db.Text
+  icon        String?
+  coverImage  String?
+  features    String[]
+  published   Boolean  @default(false)
+  order       Int      @default(0)
+  metaTitle   String?
+  metaDesc    String?
+  portfolios  Portfolio[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// Enquiries / Leads
+model Enquiry {
+  id        String       @id @default(cuid())
+  name      String
+  email     String
+  phone     String?
+  company   String?
+  service   String?
+  budget    String?
+  message   String       @db.Text
+  source    String?      
+  status    EnquiryStatus @default(NEW)
+  notes     String?      @db.Text
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+}
+
+enum EnquiryStatus {
+  NEW
+  CONTACTED
+  IN_PROGRESS
+  CONVERTED
+  CLOSED
+}
+
+// SEO Settings (Global)
+model SeoSetting {
+  id              String @id @default(cuid())
+  pageName        String @unique
+  metaTitle       String
+  metaDescription String
+  ogImage         String?
+  keywords        String?
+  customSchema    String? @db.Text
+}
+
+// Site Settings
+model Setting {
+  id    String @id @default(cuid())
+  key   String @unique
+  value String @db.Text
+}
