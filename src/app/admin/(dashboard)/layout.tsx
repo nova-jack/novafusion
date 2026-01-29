@@ -1,34 +1,54 @@
 // src/app/admin/(dashboard)/layout.tsx
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Sidebar from "@/components/admin/Sidebar";
+
+interface User {
+  email: string;
+  name: string;
+  role: string;
+}
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
-  const [authenticated, setAuthenticated] = useState(false);
+  const [user, setUser] = useState<User | null>(null);
 
-  useEffect(() => {
-    checkAuth();
-  }, []);
-
-  const checkAuth = async () => {
+  const checkAuth = useCallback(async () => {
     try {
-      const res = await fetch("/api/admin/auth");
-      const data = await res.json();
+      const res = await fetch("/api/admin/auth", {
+        credentials: 'include', // Important for cookies
+      });
+      
+      if (!res.ok) {
+        router.replace("/admin/login");
+        return;
+      }
 
-      if (data.authenticated) {
-        setAuthenticated(true);
+      const data = await res.json();
+      
+      if (data.authenticated && data.user) {
+        setUser(data.user);
       } else {
-        router.push("/admin/login");
+        router.replace("/admin/login");
       }
     } catch {
-      router.push("/admin/login");
+      router.replace("/admin/login");
     } finally {
       setLoading(false);
     }
-  };
+  }, [router]);
+
+  useEffect(() => {
+    checkAuth();
+  }, [checkAuth]);
+
+  // Re-check auth periodically (optional - detect session expiry)
+  useEffect(() => {
+    const interval = setInterval(checkAuth, 5 * 60 * 1000); // Every 5 minutes
+    return () => clearInterval(interval);
+  }, [checkAuth]);
 
   if (loading) {
     return (
@@ -41,13 +61,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     );
   }
 
-  if (!authenticated) {
+  if (!user) {
     return null;
   }
 
   return (
     <div className="min-h-screen bg-slate-100">
-      <Sidebar />
+      <Sidebar user={user} />
       <main className="lg:ml-64 min-h-screen pt-16 lg:pt-0">
         <div className="p-4 sm:p-6 lg:p-8">
           {children}
