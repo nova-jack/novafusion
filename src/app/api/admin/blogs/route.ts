@@ -1,161 +1,454 @@
+// src/app/api/admin/blogs/route.ts
+/**
+ * Improved blogs API with proper validation, error handling, and security
+ */
+
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { verifyToken } from '@/lib/auth';
+import { withAuth } from '@/lib/authMiddleware';
+import { generateSlug } from '@/lib/utils';
+import { 
+  CreateBlogRequest, 
+  UpdateBlogRequest, 
+  Blog 
+} from '@/types/api';
+import { 
+  HTTP_STATUS, 
+  ERROR_MESSAGES 
+} from '@/constants';
 
-// Middleware to check auth
-async function checkAuth(req: NextRequest) {
-  const token = req.cookies.get('admin_token')?.value;
-  if (!token) return null;
-  return verifyToken(token);
-}
-
-// GET: all blogs OR single blog by id
+/**
+ * GET - Fetch blogs (single or list)
+ */
 export async function GET(req: NextRequest) {
-  try {
-    const user = await checkAuth(req);
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+  return withAuth(req, async (req, user) => {
+    try {
+      const { searchParams } = new URL(req.url);
+      const id = searchParams.get('id');
+      const slug = searchParams.get('slug');
+      const status = searchParams.get('status');
+      const page = parseInt(searchParams.get('page') || '1');
+      const limit = parseInt(searchParams.get('limit') || '10');
 
-    const { searchParams } = new URL(req.url);
-    const id = searchParams.get('id');
+      // Fetch single blog by ID
+      if (id) {
+        const blog = await prisma.blog.findUnique({
+          where: { id },
+          include: {
+            author: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+              },
+            },
+          },
+        });
 
-    if (id) {
-      const blog = await prisma.blog.findUnique({ where: { id } });
-      if (!blog) {
-        return NextResponse.json({ error: 'Blog not found' }, { status: 404 });
+        if (!blog) {
+          return NextResponse.json(
+            { 
+              success: false, 
+              error: 'Blog not found' 
+            },
+            { status: HTTP_STATUS.NOT_FOUND }
+          );
+        }
+
+        return NextResponse.json({
+          success: true,
+          data: { blog },
+        });
       }
-      return NextResponse.json({ blog });
-    }
 
-    const blogs = await prisma.blog.findMany({
-      orderBy: { createdAt: 'desc' },
-    });
+      // Fetch single blog by slug
+      if (slug) {
+        const blog = await prisma.blog.findUnique({
+          where: { slug },
+          include: {
+            author: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+              },
+            },
+          },
+        });
 
-    return NextResponse.json({ blogs });
-  } catch (error) {
-    console.error('GET blogs error:', error);
-    return NextResponse.json({ error: 'Failed to fetch blogs' }, { status: 500 });
-  }
-}
+        if (!blog) {
+          return NextResponse.json(
+            { 
+              success: false, 
+              error: 'Blog not found' 
+            },
+            { status: HTTP_STATUS.NOT_FOUND }
+          );
+        }
 
-// POST: create blog
-export async function POST(req: NextRequest) {
-  try {
-    const user = await checkAuth(req);
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+        return NextResponse.json({
+          success: true,
+          data: { blog },
+        });
+      }
 
-    const body = await req.json();
+      // Fetch list of blogs with pagination
+      const where: any = {};
+      if (status) {
+        where.status = status;
+      }
 
-    // Validation
-    if (!body.title || !body.slug || !body.content) {
+      const [blogs, total] = await Promise.all([
+        prisma.blog.findMany({
+          where,
+          include: {
+            author: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+              },
+            },
+          },
+          orderBy: { createdAt: 'desc' },
+          skip: (page - 1) * limit,
+          take: limit,
+        }),
+        prisma.blog.count({ where }),
+      ]);
+
+      return NextResponse.json({
+        success: true,
+        data: {
+          blogs,
+          pagination: {
+            total,
+            page,
+            limit,
+            totalPages: Math.ceil(total / limit),
+            hasNext: page < Math.ceil(total / limit),
+            hasPrev: page > 1,
+          },
+        },
+      });
+    } catch (error) {
+      console.error('GET /api/admin/blogs error:', error);
       return NextResponse.json(
-        { error: 'Title, slug, and content are required' },
-        { status: 400 }
+        { 
+          success: false, 
+          error: ERROR_MESSAGES.SERVER_ERROR 
+        },
+        { status: HTTP_STATUS.INTERNAL_SERVER_ERROR }
       );
     }
-
-    // Sanitize slug
-    const slug = body.slug
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/(^-|-$)/g, '');
-
-    // Check slug uniqueness
-    const existing = await prisma.blog.findUnique({ where: { slug } });
-    if (existing) {
-      return NextResponse.json({ error: 'Slug already exists' }, { status: 409 });
-    }
-
-    const blog = await prisma.blog.create({
-      data: {
-        title: body.title.trim(),
-        slug,
-        excerpt: body.excerpt?.trim() || '',
-        content: body.content,
-        coverImage: body.coverImage || null,
-        published: body.status === 'published',
-        featured: body.featured || false,
-        metaTitle: body.metaTitle?.trim() || null,
-        metaDesc: body.metaDescription?.trim() || null,
-        keywords: body.keywords?.trim() || null,
-        authorId: user.id, // Use authenticated user's ID
-        categoryId: body.categoryId || null,
-      },
-    });
-
-    return NextResponse.json({ blog }, { status: 201 });
-  } catch (error) {
-    console.error('POST blog error:', error);
-    return NextResponse.json({ error: 'Failed to create blog' }, { status: 500 });
-  }
+  });
 }
 
-// PUT: update blog
+/**
+ * POST - Create new blog
+ */
+export async function POST(req: NextRequest) {
+  return withAuth(req, async (req, user) => {
+    try {
+      const body: CreateBlogRequest = await req.json();
+
+      // Validate required fields
+      if (!body.title || !body.content) {
+        return NextResponse.json(
+          { 
+            success: false, 
+            error: 'Title and content are required' 
+          },
+          { status: HTTP_STATUS.BAD_REQUEST }
+        );
+      }
+
+      // Validate title length
+      if (body.title.length < 3 || body.title.length > 200) {
+        return NextResponse.json(
+          { 
+            success: false, 
+            error: 'Title must be between 3 and 200 characters' 
+          },
+          { status: HTTP_STATUS.BAD_REQUEST }
+        );
+      }
+
+      // Validate content length
+      if (body.content.length < 10) {
+        return NextResponse.json(
+          { 
+            success: false, 
+            error: 'Content must be at least 10 characters' 
+          },
+          { status: HTTP_STATUS.BAD_REQUEST }
+        );
+      }
+
+      // Generate slug if not provided
+      const slug = body.slug || generateSlug(body.title);
+
+      // Check if slug already exists
+      const existingBlog = await prisma.blog.findUnique({
+        where: { slug },
+      });
+
+      if (existingBlog) {
+        return NextResponse.json(
+          { 
+            success: false, 
+            error: 'A blog with this slug already exists' 
+          },
+          { status: HTTP_STATUS.CONFLICT }
+        );
+      }
+
+      // Create blog
+      const blog = await prisma.blog.create({
+        data: {
+          title: body.title.trim(),
+          slug,
+          content: body.content,
+          metaTitle: body.metaTitle?.trim() || body.title.trim(),
+          metaDescription: body.metaDescription?.trim() || '',
+          status: body.status || 'draft',
+          authorId: user.id,
+        },
+        include: {
+          author: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+            },
+          },
+        },
+      });
+
+      return NextResponse.json(
+        {
+          success: true,
+          data: { blog },
+          message: 'Blog created successfully',
+        },
+        { status: HTTP_STATUS.CREATED }
+      );
+    } catch (error) {
+      console.error('POST /api/admin/blogs error:', error);
+      return NextResponse.json(
+        { 
+          success: false, 
+          error: ERROR_MESSAGES.SERVER_ERROR 
+        },
+        { status: HTTP_STATUS.INTERNAL_SERVER_ERROR }
+      );
+    }
+  });
+}
+
+/**
+ * PUT - Update existing blog
+ */
 export async function PUT(req: NextRequest) {
-  try {
-    const user = await checkAuth(req);
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  return withAuth(req, async (req, user) => {
+    try {
+      const body: UpdateBlogRequest = await req.json();
+
+      // Validate ID
+      if (!body.id) {
+        return NextResponse.json(
+          { 
+            success: false, 
+            error: 'Blog ID is required' 
+          },
+          { status: HTTP_STATUS.BAD_REQUEST }
+        );
+      }
+
+      // Check if blog exists
+      const existingBlog = await prisma.blog.findUnique({
+        where: { id: body.id },
+      });
+
+      if (!existingBlog) {
+        return NextResponse.json(
+          { 
+            success: false, 
+            error: 'Blog not found' 
+          },
+          { status: HTTP_STATUS.NOT_FOUND }
+        );
+      }
+
+      // Check authorization (only author or super admin can edit)
+      if (existingBlog.authorId !== user.id && user.role !== 'SUPER_ADMIN') {
+        return NextResponse.json(
+          { 
+            success: false, 
+            error: ERROR_MESSAGES.UNAUTHORIZED 
+          },
+          { status: HTTP_STATUS.FORBIDDEN }
+        );
+      }
+
+      // Validate slug if provided
+      if (body.slug && body.slug !== existingBlog.slug) {
+        const slugExists = await prisma.blog.findUnique({
+          where: { slug: body.slug },
+        });
+
+        if (slugExists) {
+          return NextResponse.json(
+            { 
+              success: false, 
+              error: 'A blog with this slug already exists' 
+            },
+            { status: HTTP_STATUS.CONFLICT }
+          );
+        }
+      }
+
+      // Build update data
+      const updateData: any = {};
+      
+      if (body.title !== undefined) {
+        if (body.title.length < 3 || body.title.length > 200) {
+          return NextResponse.json(
+            { 
+              success: false, 
+              error: 'Title must be between 3 and 200 characters' 
+            },
+            { status: HTTP_STATUS.BAD_REQUEST }
+          );
+        }
+        updateData.title = body.title.trim();
+      }
+      
+      if (body.slug !== undefined) {
+        updateData.slug = body.slug;
+      }
+      
+      if (body.content !== undefined) {
+        if (body.content.length < 10) {
+          return NextResponse.json(
+            { 
+              success: false, 
+              error: 'Content must be at least 10 characters' 
+            },
+            { status: HTTP_STATUS.BAD_REQUEST }
+          );
+        }
+        updateData.content = body.content;
+      }
+      
+      if (body.metaTitle !== undefined) {
+        updateData.metaTitle = body.metaTitle.trim();
+      }
+      
+      if (body.metaDescription !== undefined) {
+        updateData.metaDescription = body.metaDescription.trim();
+      }
+      
+      if (body.status !== undefined) {
+        updateData.status = body.status;
+      }
+
+      // Update blog
+      const blog = await prisma.blog.update({
+        where: { id: body.id },
+        data: updateData,
+        include: {
+          author: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+            },
+          },
+        },
+      });
+
+      return NextResponse.json({
+        success: true,
+        data: { blog },
+        message: 'Blog updated successfully',
+      });
+    } catch (error) {
+      console.error('PUT /api/admin/blogs error:', error);
+      return NextResponse.json(
+        { 
+          success: false, 
+          error: ERROR_MESSAGES.SERVER_ERROR 
+        },
+        { status: HTTP_STATUS.INTERNAL_SERVER_ERROR }
+      );
     }
-
-    const body = await req.json();
-
-    if (!body.id) {
-      return NextResponse.json({ error: 'Blog ID required' }, { status: 400 });
-    }
-
-    // Check blog exists
-    const existing = await prisma.blog.findUnique({ where: { id: body.id } });
-    if (!existing) {
-      return NextResponse.json({ error: 'Blog not found' }, { status: 404 });
-    }
-
-    const blog = await prisma.blog.update({
-      where: { id: body.id },
-      data: {
-        title: body.title?.trim(),
-        slug: body.slug?.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
-        excerpt: body.excerpt?.trim() || '',
-        content: body.content,
-        coverImage: body.coverImage || null,
-        published: body.status === 'published',
-        featured: body.featured || false,
-        metaTitle: body.metaTitle?.trim() || null,
-        metaDesc: body.metaDescription?.trim() || null,
-        keywords: body.keywords?.trim() || null,
-        categoryId: body.categoryId || null,
-      },
-    });
-
-    return NextResponse.json({ blog });
-  } catch (error) {
-    console.error('PUT blog error:', error);
-    return NextResponse.json({ error: 'Failed to update blog' }, { status: 500 });
-  }
+  });
 }
 
-// DELETE: remove blog
+/**
+ * DELETE - Delete blog
+ */
 export async function DELETE(req: NextRequest) {
-  try {
-    const user = await checkAuth(req);
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  return withAuth(req, async (req, user) => {
+    try {
+      const { searchParams } = new URL(req.url);
+      const id = searchParams.get('id');
+
+      if (!id) {
+        return NextResponse.json(
+          { 
+            success: false, 
+            error: 'Blog ID is required' 
+          },
+          { status: HTTP_STATUS.BAD_REQUEST }
+        );
+      }
+
+      // Check if blog exists
+      const existingBlog = await prisma.blog.findUnique({
+        where: { id },
+      });
+
+      if (!existingBlog) {
+        return NextResponse.json(
+          { 
+            success: false, 
+            error: 'Blog not found' 
+          },
+          { status: HTTP_STATUS.NOT_FOUND }
+        );
+      }
+
+      // Check authorization (only author or super admin can delete)
+      if (existingBlog.authorId !== user.id && user.role !== 'SUPER_ADMIN') {
+        return NextResponse.json(
+          { 
+            success: false, 
+            error: ERROR_MESSAGES.UNAUTHORIZED 
+          },
+          { status: HTTP_STATUS.FORBIDDEN }
+        );
+      }
+
+      // Delete blog
+      await prisma.blog.delete({
+        where: { id },
+      });
+
+      return NextResponse.json({
+        success: true,
+        message: 'Blog deleted successfully',
+      });
+    } catch (error) {
+      console.error('DELETE /api/admin/blogs error:', error);
+      return NextResponse.json(
+        { 
+          success: false, 
+          error: ERROR_MESSAGES.SERVER_ERROR 
+        },
+        { status: HTTP_STATUS.INTERNAL_SERVER_ERROR }
+      );
     }
-
-    const body = await req.json();
-
-    if (!body.id) {
-      return NextResponse.json({ error: 'Blog ID required' }, { status: 400 });
-    }
-
-    await prisma.blog.delete({ where: { id: body.id } });
-
-    return NextResponse.json({ success: true });
-  } catch (error) {
-    console.error('DELETE blog error:', error);
-    return NextResponse.json({ error: 'Failed to delete blog' }, { status: 500 });
-  }
+  });
 }
