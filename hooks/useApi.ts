@@ -96,7 +96,8 @@ export function useApi<T, P extends any[] = []>(
   // Execute immediately on mount if specified
   useEffect(() => {
     if (immediate && lastParamsRef.current === null) {
-      execute([] as unknown as P);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (execute as any)();
     }
   }, [immediate, execute]);
 
@@ -127,7 +128,7 @@ export function useApiGet<T>(
 /**
  * Hook for mutation operations (POST, PUT, DELETE)
  */
-export function useApiMutation<T, D = any>(
+export function useApiMutation<T, D extends Record<string, any> = Record<string, any>>(
   method: 'post' | 'put' | 'delete' | 'patch',
   endpoint: string,
   options: UseApiOptions<T> = {}
@@ -140,7 +141,8 @@ export function useApiMutation<T, D = any>(
         case 'put':
           return apiClient.put<T>(endpoint, data);
         case 'delete':
-          return apiClient.delete<T>(endpoint, data);
+          // delete uses params (query string), not body
+          return apiClient.delete<T>(endpoint, data as Record<string, any> | undefined);
         case 'patch':
           return apiClient.patch<T>(endpoint, data);
         default:

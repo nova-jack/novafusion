@@ -43,11 +43,7 @@ export interface Blog {
 }
 
 export interface BlogWithAuthor extends Blog {
-  author: {
-    id: string;
-    name: string;
-    email: string;
-  };
+  author: { id: string; name: string; email: string };
   category: Category | null;
 }
 
@@ -79,6 +75,10 @@ export interface UpdateBlogInput {
   keywords?: string | null;
   categoryId?: string | null;
 }
+
+// Aliases for backward compatibility
+export type CreateBlogRequest = CreateBlogInput;
+export type UpdateBlogRequest = UpdateBlogInput;
 
 // ─── Category ────────────────────────────────────────────────────────────────
 
@@ -117,11 +117,7 @@ export interface Portfolio {
 }
 
 export interface PortfolioWithAuthor extends Portfolio {
-  author: {
-    id: string;
-    name: string;
-    email: string;
-  };
+  author: { id: string; name: string; email: string };
   service: Pick<Service, 'id' | 'title' | 'slug'> | null;
 }
 

@@ -3,7 +3,7 @@
  * Improved authentication utilities with proper security
  */
 
-import jwt from 'jsonwebtoken';
+import jwt, { SignOptions } from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 import { cookies } from 'next/headers';
 import { prisma } from './prisma';
@@ -29,6 +29,12 @@ export function generateToken(user: AdminUser): string {
     throw new Error('Invalid user data for token generation');
   }
 
+  const signOptions: SignOptions = {
+    expiresIn: JWT_EXPIRES_IN as SignOptions['expiresIn'],
+    issuer: 'novafusion-admin',
+    audience: 'novafusion-admin-panel',
+  };
+
   return jwt.sign(
     {
       id: user.id,
@@ -37,11 +43,7 @@ export function generateToken(user: AdminUser): string {
       role: user.role,
     },
     JWT_SECRET,
-    { 
-      expiresIn: JWT_EXPIRES_IN,
-      issuer: 'novafusion-admin',
-      audience: 'novafusion-admin-panel',
-    }
+    signOptions
   );
 }
 
@@ -54,12 +56,12 @@ export function verifyToken(token: string): AdminUser | null {
       issuer: 'novafusion-admin',
       audience: 'novafusion-admin-panel',
     }) as AdminUser;
-    
+
     // Validate decoded token structure
     if (!decoded.id || !decoded.email || !decoded.role) {
       return null;
     }
-    
+
     return decoded;
   } catch (error) {
     // Token expired, invalid, or malformed
@@ -72,7 +74,7 @@ export function verifyToken(token: string): AdminUser | null {
  * Validate user credentials against database
  */
 export async function validateCredentials(
-  email: string, 
+  email: string,
   password: string
 ): Promise<AdminUser | null> {
   try {
@@ -104,7 +106,7 @@ export async function validateCredentials(
 
     // Verify password
     const isValid = await bcrypt.compare(password, user.password);
-    
+
     if (!isValid) {
       return null;
     }
@@ -127,29 +129,29 @@ export async function validateCredentials(
  */
 export async function getServerSession(): Promise<AdminUser | null> {
   try {
-    const cookieStore = cookies();
+    const cookieStore = await cookies();
     const token = cookieStore.get(COOKIE_NAMES.ADMIN_TOKEN)?.value;
-    
+
     if (!token) {
       return null;
     }
-    
+
     const user = verifyToken(token);
-    
+
     if (!user) {
       return null;
     }
-    
+
     // Optional: Verify user still exists in database
     const dbUser = await prisma.user.findUnique({
       where: { id: user.id },
       select: { id: true, email: true, name: true, role: true },
     });
-    
+
     if (!dbUser) {
       return null;
     }
-    
+
     return {
       id: dbUser.id,
       email: dbUser.email,
@@ -169,7 +171,7 @@ export async function hashPassword(password: string): Promise<string> {
   if (!password || password.length < 8) {
     throw new Error('Password must be at least 8 characters long');
   }
-  
+
   return bcrypt.hash(password, SALT_ROUNDS);
 }
 
@@ -177,7 +179,7 @@ export async function hashPassword(password: string): Promise<string> {
  * Compare password with hash
  */
 export async function comparePassword(
-  password: string, 
+  password: string,
   hash: string
 ): Promise<boolean> {
   try {
@@ -191,8 +193,8 @@ export async function comparePassword(
 /**
  * Clear authentication session
  */
-export function clearSession(): void {
-  const cookieStore = cookies();
+export async function clearSession(): Promise<void> {
+  const cookieStore = await cookies();
   cookieStore.delete(COOKIE_NAMES.ADMIN_TOKEN);
 }
 
@@ -204,31 +206,31 @@ export function validatePasswordStrength(password: string): {
   errors: string[];
 } {
   const errors: string[] = [];
-  
+
   if (password.length < 8) {
     errors.push('Password must be at least 8 characters long');
   }
-  
+
   if (password.length > 128) {
     errors.push('Password must not exceed 128 characters');
   }
-  
+
   if (!/[A-Z]/.test(password)) {
     errors.push('Password must contain at least one uppercase letter');
   }
-  
+
   if (!/[a-z]/.test(password)) {
     errors.push('Password must contain at least one lowercase letter');
   }
-  
+
   if (!/[0-9]/.test(password)) {
     errors.push('Password must contain at least one number');
   }
-  
+
   if (!/[^A-Za-z0-9]/.test(password)) {
     errors.push('Password must contain at least one special character');
   }
-  
+
   return {
     isValid: errors.length === 0,
     errors,

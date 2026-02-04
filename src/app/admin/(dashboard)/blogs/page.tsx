@@ -1,5 +1,4 @@
 'use client';
-
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { format } from 'date-fns';
@@ -8,7 +7,7 @@ interface Blog {
   id: string;
   title: string;
   slug: string;
-  status: 'draft' | 'published';
+  published: boolean;
   createdAt: string;
 }
 
@@ -34,9 +33,8 @@ export default function AdminBlogsPage() {
     }
   };
 
-  const statusBadge = (status: string) => {
-    if (status === 'published')
-      return 'bg-green-100 text-green-700';
+  const statusBadge = (published: boolean) => {
+    if (published) return 'bg-green-100 text-green-700';
     return 'bg-yellow-100 text-yellow-700';
   };
 
@@ -50,15 +48,11 @@ export default function AdminBlogsPage() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-3xl font-bold">Blogs</h1>
-          <p className="text-gray-500">
-            Manage SEO articles & content
-          </p>
+          <p className="text-gray-500">Manage SEO articles & content</p>
         </div>
-
         <Link
           href="/admin/blogs/new"
           className="rounded-lg bg-blue-600 px-4 py-2 text-white hover:bg-blue-700"
@@ -67,7 +61,6 @@ export default function AdminBlogsPage() {
         </Link>
       </div>
 
-      {/* Table */}
       <div className="overflow-x-auto rounded-lg border bg-white">
         <table className="w-full text-left">
           <thead className="bg-gray-100 text-sm">
@@ -79,48 +72,29 @@ export default function AdminBlogsPage() {
               <th className="p-4">Action</th>
             </tr>
           </thead>
-
           <tbody>
             {blogs.map((blog) => (
               <tr key={blog.id} className="border-t">
-                <td className="p-4 font-medium">
-                  {blog.title}
-                </td>
-                <td className="p-4 text-sm text-gray-500">
-                  {blog.slug}
-                </td>
+                <td className="p-4 font-medium">{blog.title}</td>
+                <td className="p-4 text-sm text-gray-500">{blog.slug}</td>
                 <td className="p-4">
-                  <span
-                    className={`rounded-full px-2 py-1 text-xs ${statusBadge(
-                      blog.status
-                    )}`}
-                  >
-                    {blog.status}
+                  <span className={`rounded-full px-2 py-1 text-xs ${statusBadge(blog.published)}`}>
+                    {blog.published ? 'Published' : 'Draft'}
                   </span>
                 </td>
                 <td className="p-4 text-sm text-gray-500">
-                  {format(
-                    new Date(blog.createdAt),
-                    'MMM dd, yyyy'
-                  )}
+                  {format(new Date(blog.createdAt), 'MMM dd, yyyy')}
                 </td>
                 <td className="p-4">
-                  <Link
-                    href={`/admin/blogs/edit/${blog.id}`}
-                    className="text-blue-600 hover:underline"
-                  >
+                  <Link href={`/admin/blogs/edit/${blog.id}`} className="text-blue-600 hover:underline">
                     Edit
                   </Link>
                 </td>
               </tr>
             ))}
-
             {blogs.length === 0 && (
               <tr>
-                <td
-                  colSpan={5}
-                  className="p-6 text-center text-gray-500"
-                >
+                <td colSpan={5} className="p-6 text-center text-gray-500">
                   No blogs found
                 </td>
               </tr>
@@ -131,4 +105,3 @@ export default function AdminBlogsPage() {
     </div>
   );
 }
-

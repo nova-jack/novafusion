@@ -1,20 +1,20 @@
 # Dependencies
-node_modules
+node_modules/
 .pnp
 .pnp.js
 
 # Build
-.next
-out
-build
-dist
+.next/
+out/
+build/
+dist/
 
-# Environment files
+# Environment files (IMPORTANT: keep secrets safe)
 .env
 .env.local
-.env.development
-.env.production
-.env*.local
+.env.development.local
+.env.test.local
+.env.production.local
 
 # Debug
 npm-debug.log*
@@ -22,8 +22,8 @@ yarn-debug.log*
 yarn-error.log*
 
 # IDE
-.idea
-.vscode
+.idea/
+.vscode/
 *.swp
 *.swo
 
@@ -31,11 +31,10 @@ yarn-error.log*
 .DS_Store
 Thumbs.db
 
-# Prisma
-prisma/*.db
-prisma/*.db-journal
+# TypeScript
+*.tsbuildinfo
+next-env.d.ts
 
 # Misc
-*.pem
-coverage
+*.log
 .vercel

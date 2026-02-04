@@ -2,7 +2,6 @@
 /**
  * Centralized API types for type-safe API calls
  */
-
 // Common response wrapper
 export interface ApiResponse<T = any> {
   success: boolean;
@@ -10,7 +9,6 @@ export interface ApiResponse<T = any> {
   error?: string;
   message?: string;
 }
-
 // Auth types
 export interface AdminUser {
   id: string;
@@ -18,17 +16,14 @@ export interface AdminUser {
   name: string;
   role: 'ADMIN' | 'SUPER_ADMIN';
 }
-
 export interface LoginRequest {
   email: string;
   password: string;
 }
-
 export interface LoginResponse {
   user: AdminUser;
   token: string;
 }
-
 // Blog types
 export interface Blog {
   id: string;
@@ -37,34 +32,24 @@ export interface Blog {
   content: string;
   excerpt?: string;
   metaTitle?: string;
-  metaDescription?: string;
-  status: 'draft' | 'published';
+  metaDesc?: string;
+  published: boolean;
   createdAt: string;
   updatedAt: string;
   authorId: string;
 }
-
 export interface CreateBlogRequest {
   title: string;
   slug: string;
   content: string;
   excerpt?: string;
   metaTitle?: string;
-  metaDescription?: string;
-  status: 'draft' | 'published';
+  metaDesc?: string;
+  published: boolean;
 }
-
 export interface UpdateBlogRequest extends Partial<CreateBlogRequest> {
   id: string;
-  title?: string;
-  slug?: string;
-  content?: string;
-  excerpt?: string;
-  metaTitle?: string;
-  metaDescription?: string;
-  status?: 'draft' | 'published';
 }
-
 // Portfolio types
 export interface Portfolio {
   id: string;
@@ -75,12 +60,11 @@ export interface Portfolio {
   images: string[];
   category: string;
   tags: string[];
-  status: 'draft' | 'published';
+  published: boolean;
   featured: boolean;
   createdAt: string;
   updatedAt: string;
 }
-
 export interface CreatePortfolioRequest {
   title: string;
   slug: string;
@@ -89,14 +73,12 @@ export interface CreatePortfolioRequest {
   images: string[];
   category: string;
   tags: string[];
-  status: 'draft' | 'published';
+  published: boolean;
   featured?: boolean;
 }
-
 export interface UpdatePortfolioRequest extends Partial<CreatePortfolioRequest> {
   id: string;
 }
-
 // Service types
 export interface Service {
   id: string;
@@ -106,11 +88,10 @@ export interface Service {
   content: string;
   icon?: string;
   features: string[];
-  status: 'draft' | 'published';
+  published: boolean;
   createdAt: string;
   updatedAt: string;
 }
-
 export interface CreateServiceRequest {
   title: string;
   slug: string;
@@ -118,13 +99,11 @@ export interface CreateServiceRequest {
   content: string;
   icon?: string;
   features: string[];
-  status: 'draft' | 'published';
+  published: boolean;
 }
-
 export interface UpdateServiceRequest extends Partial<CreateServiceRequest> {
   id: string;
 }
-
 // Enquiry types
 export interface Enquiry {
   id: string;
@@ -137,7 +116,6 @@ export interface Enquiry {
   createdAt: string;
   updatedAt: string;
 }
-
 export interface CreateEnquiryRequest {
   name: string;
   email: string;
@@ -145,7 +123,6 @@ export interface CreateEnquiryRequest {
   company?: string;
   message: string;
 }
-
 // Pagination types
 export interface PaginationParams {
   page?: number;
@@ -153,7 +130,6 @@ export interface PaginationParams {
   sortBy?: string;
   sortOrder?: 'asc' | 'desc';
 }
-
 export interface PaginatedResponse<T> {
   data: T[];
   pagination: {

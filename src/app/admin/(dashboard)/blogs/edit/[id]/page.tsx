@@ -135,8 +135,8 @@ export default function EditBlogPage() {
       form.setFieldValue('slug', blog.slug);
       form.setFieldValue('content', blog.content);
       form.setFieldValue('metaTitle', blog.metaTitle || '');
-      form.setFieldValue('metaDescription', blog.metaDescription || '');
-      form.setFieldValue('status', blog.status);
+      form.setFieldValue('metaDescription', blog.metaDesc || '');
+      form.setFieldValue('status', blog.published ? 'published' : 'draft');
     }
   }, [blog]);
 

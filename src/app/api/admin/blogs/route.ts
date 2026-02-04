@@ -6,15 +6,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { withAuth } from '@/lib/authMiddleware';
-import { generateSlug } from '@/lib/utils';
-import { 
-  CreateBlogRequest, 
-  UpdateBlogRequest, 
-  Blog 
+import { generateSlug, sanitizeHTML, createExcerpt } from '@/lib/utils';
+import {
+  CreateBlogRequest,
+  UpdateBlogRequest,
+  Blog
 } from '@/types/api';
-import { 
-  HTTP_STATUS, 
-  ERROR_MESSAGES 
+import {
+  HTTP_STATUS,
+  ERROR_MESSAGES
 } from '@/constants';
 
 /**
@@ -26,7 +26,7 @@ export async function GET(req: NextRequest) {
       const { searchParams } = new URL(req.url);
       const id = searchParams.get('id');
       const slug = searchParams.get('slug');
-      const status = searchParams.get('status');
+      const published = searchParams.get('published');
       const page = parseInt(searchParams.get('page') || '1');
       const limit = parseInt(searchParams.get('limit') || '10');
 
@@ -42,14 +42,15 @@ export async function GET(req: NextRequest) {
                 email: true,
               },
             },
+            category: true,
           },
         });
 
         if (!blog) {
           return NextResponse.json(
-            { 
-              success: false, 
-              error: 'Blog not found' 
+            {
+              success: false,
+              error: 'Blog not found'
             },
             { status: HTTP_STATUS.NOT_FOUND }
           );
@@ -73,14 +74,15 @@ export async function GET(req: NextRequest) {
                 email: true,
               },
             },
+            category: true,
           },
         });
 
         if (!blog) {
           return NextResponse.json(
-            { 
-              success: false, 
-              error: 'Blog not found' 
+            {
+              success: false,
+              error: 'Blog not found'
             },
             { status: HTTP_STATUS.NOT_FOUND }
           );
@@ -94,8 +96,8 @@ export async function GET(req: NextRequest) {
 
       // Fetch list of blogs with pagination
       const where: any = {};
-      if (status) {
-        where.status = status;
+      if (published !== null) {
+        where.published = published === 'true';
       }
 
       const [blogs, total] = await Promise.all([
@@ -109,6 +111,7 @@ export async function GET(req: NextRequest) {
                 email: true,
               },
             },
+            category: true,
           },
           orderBy: { createdAt: 'desc' },
           skip: (page - 1) * limit,
@@ -134,9 +137,9 @@ export async function GET(req: NextRequest) {
     } catch (error) {
       console.error('GET /api/admin/blogs error:', error);
       return NextResponse.json(
-        { 
-          success: false, 
-          error: ERROR_MESSAGES.SERVER_ERROR 
+        {
+          success: false,
+          error: ERROR_MESSAGES.SERVER_ERROR
         },
         { status: HTTP_STATUS.INTERNAL_SERVER_ERROR }
       );
@@ -155,9 +158,9 @@ export async function POST(req: NextRequest) {
       // Validate required fields
       if (!body.title || !body.content) {
         return NextResponse.json(
-          { 
-            success: false, 
-            error: 'Title and content are required' 
+          {
+            success: false,
+            error: 'Title and content are required'
           },
           { status: HTTP_STATUS.BAD_REQUEST }
         );
@@ -166,9 +169,9 @@ export async function POST(req: NextRequest) {
       // Validate title length
       if (body.title.length < 3 || body.title.length > 200) {
         return NextResponse.json(
-          { 
-            success: false, 
-            error: 'Title must be between 3 and 200 characters' 
+          {
+            success: false,
+            error: 'Title must be between 3 and 200 characters'
           },
           { status: HTTP_STATUS.BAD_REQUEST }
         );
@@ -177,9 +180,9 @@ export async function POST(req: NextRequest) {
       // Validate content length
       if (body.content.length < 10) {
         return NextResponse.json(
-          { 
-            success: false, 
-            error: 'Content must be at least 10 characters' 
+          {
+            success: false,
+            error: 'Content must be at least 10 characters'
           },
           { status: HTTP_STATUS.BAD_REQUEST }
         );
@@ -195,23 +198,31 @@ export async function POST(req: NextRequest) {
 
       if (existingBlog) {
         return NextResponse.json(
-          { 
-            success: false, 
-            error: 'A blog with this slug already exists' 
+          {
+            success: false,
+            error: 'A blog with this slug already exists'
           },
           { status: HTTP_STATUS.CONFLICT }
         );
       }
 
-      // Create blog
+      // Create excerpt if not provided
+      const excerpt = body.excerpt || createExcerpt(body.content, 160);
+
+      // Create blog - map to Prisma schema field names
       const blog = await prisma.blog.create({
         data: {
           title: body.title.trim(),
           slug,
           content: body.content,
+          excerpt,
           metaTitle: body.metaTitle?.trim() || body.title.trim(),
-          metaDescription: body.metaDescription?.trim() || '',
-          status: body.status || 'draft',
+          metaDesc: body.metaDesc?.trim() || excerpt,
+          published: body.published ?? false,
+          featured: body.featured ?? false,
+          coverImage: body.coverImage || null,
+          keywords: body.keywords || null,
+          categoryId: body.categoryId || null,
           authorId: user.id,
         },
         include: {
@@ -222,6 +233,7 @@ export async function POST(req: NextRequest) {
               email: true,
             },
           },
+          category: true,
         },
       });
 
@@ -236,9 +248,9 @@ export async function POST(req: NextRequest) {
     } catch (error) {
       console.error('POST /api/admin/blogs error:', error);
       return NextResponse.json(
-        { 
-          success: false, 
-          error: ERROR_MESSAGES.SERVER_ERROR 
+        {
+          success: false,
+          error: ERROR_MESSAGES.SERVER_ERROR
         },
         { status: HTTP_STATUS.INTERNAL_SERVER_ERROR }
       );
@@ -257,9 +269,9 @@ export async function PUT(req: NextRequest) {
       // Validate ID
       if (!body.id) {
         return NextResponse.json(
-          { 
-            success: false, 
-            error: 'Blog ID is required' 
+          {
+            success: false,
+            error: 'Blog ID is required'
           },
           { status: HTTP_STATUS.BAD_REQUEST }
         );
@@ -272,9 +284,9 @@ export async function PUT(req: NextRequest) {
 
       if (!existingBlog) {
         return NextResponse.json(
-          { 
-            success: false, 
-            error: 'Blog not found' 
+          {
+            success: false,
+            error: 'Blog not found'
           },
           { status: HTTP_STATUS.NOT_FOUND }
         );
@@ -283,9 +295,9 @@ export async function PUT(req: NextRequest) {
       // Check authorization (only author or super admin can edit)
       if (existingBlog.authorId !== user.id && user.role !== 'SUPER_ADMIN') {
         return NextResponse.json(
-          { 
-            success: false, 
-            error: ERROR_MESSAGES.UNAUTHORIZED 
+          {
+            success: false,
+            error: ERROR_MESSAGES.UNAUTHORIZED
           },
           { status: HTTP_STATUS.FORBIDDEN }
         );
@@ -299,58 +311,78 @@ export async function PUT(req: NextRequest) {
 
         if (slugExists) {
           return NextResponse.json(
-            { 
-              success: false, 
-              error: 'A blog with this slug already exists' 
+            {
+              success: false,
+              error: 'A blog with this slug already exists'
             },
             { status: HTTP_STATUS.CONFLICT }
           );
         }
       }
 
-      // Build update data
+      // Build update data - map to Prisma schema field names
       const updateData: any = {};
-      
+
       if (body.title !== undefined) {
         if (body.title.length < 3 || body.title.length > 200) {
           return NextResponse.json(
-            { 
-              success: false, 
-              error: 'Title must be between 3 and 200 characters' 
+            {
+              success: false,
+              error: 'Title must be between 3 and 200 characters'
             },
             { status: HTTP_STATUS.BAD_REQUEST }
           );
         }
         updateData.title = body.title.trim();
       }
-      
+
       if (body.slug !== undefined) {
         updateData.slug = body.slug;
       }
-      
+
       if (body.content !== undefined) {
         if (body.content.length < 10) {
           return NextResponse.json(
-            { 
-              success: false, 
-              error: 'Content must be at least 10 characters' 
+            {
+              success: false,
+              error: 'Content must be at least 10 characters'
             },
             { status: HTTP_STATUS.BAD_REQUEST }
           );
         }
         updateData.content = body.content;
       }
-      
+
+      if (body.excerpt !== undefined) {
+        updateData.excerpt = body.excerpt;
+      }
+
       if (body.metaTitle !== undefined) {
-        updateData.metaTitle = body.metaTitle.trim();
+        updateData.metaTitle = body.metaTitle?.trim() || null;
       }
-      
-      if (body.metaDescription !== undefined) {
-        updateData.metaDescription = body.metaDescription.trim();
+
+      if (body.metaDesc !== undefined) {
+        updateData.metaDesc = body.metaDesc?.trim() || null;
       }
-      
-      if (body.status !== undefined) {
-        updateData.status = body.status;
+
+      if (body.published !== undefined) {
+        updateData.published = body.published;
+      }
+
+      if (body.featured !== undefined) {
+        updateData.featured = body.featured;
+      }
+
+      if (body.coverImage !== undefined) {
+        updateData.coverImage = body.coverImage || null;
+      }
+
+      if (body.keywords !== undefined) {
+        updateData.keywords = body.keywords || null;
+      }
+
+      if (body.categoryId !== undefined) {
+        updateData.categoryId = body.categoryId || null;
       }
 
       // Update blog
@@ -365,6 +397,7 @@ export async function PUT(req: NextRequest) {
               email: true,
             },
           },
+          category: true,
         },
       });
 
@@ -376,9 +409,9 @@ export async function PUT(req: NextRequest) {
     } catch (error) {
       console.error('PUT /api/admin/blogs error:', error);
       return NextResponse.json(
-        { 
-          success: false, 
-          error: ERROR_MESSAGES.SERVER_ERROR 
+        {
+          success: false,
+          error: ERROR_MESSAGES.SERVER_ERROR
         },
         { status: HTTP_STATUS.INTERNAL_SERVER_ERROR }
       );
@@ -397,9 +430,9 @@ export async function DELETE(req: NextRequest) {
 
       if (!id) {
         return NextResponse.json(
-          { 
-            success: false, 
-            error: 'Blog ID is required' 
+          {
+            success: false,
+            error: 'Blog ID is required'
           },
           { status: HTTP_STATUS.BAD_REQUEST }
         );
@@ -412,9 +445,9 @@ export async function DELETE(req: NextRequest) {
 
       if (!existingBlog) {
         return NextResponse.json(
-          { 
-            success: false, 
-            error: 'Blog not found' 
+          {
+            success: false,
+            error: 'Blog not found'
           },
           { status: HTTP_STATUS.NOT_FOUND }
         );
@@ -423,9 +456,9 @@ export async function DELETE(req: NextRequest) {
       // Check authorization (only author or super admin can delete)
       if (existingBlog.authorId !== user.id && user.role !== 'SUPER_ADMIN') {
         return NextResponse.json(
-          { 
-            success: false, 
-            error: ERROR_MESSAGES.UNAUTHORIZED 
+          {
+            success: false,
+            error: ERROR_MESSAGES.UNAUTHORIZED
           },
           { status: HTTP_STATUS.FORBIDDEN }
         );
@@ -443,9 +476,9 @@ export async function DELETE(req: NextRequest) {
     } catch (error) {
       console.error('DELETE /api/admin/blogs error:', error);
       return NextResponse.json(
-        { 
-          success: false, 
-          error: ERROR_MESSAGES.SERVER_ERROR 
+        {
+          success: false,
+          error: ERROR_MESSAGES.SERVER_ERROR
         },
         { status: HTTP_STATUS.INTERNAL_SERVER_ERROR }
       );
